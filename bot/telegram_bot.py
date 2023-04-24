@@ -393,7 +393,7 @@ class ChatGPTTelegramBot:
                             parse_mode=constants.ParseMode.MARKDOWN
                         )
 
-                        if self.config['use_tts']:
+                        if self.config['use_tts'] == 'true':
                             await self.answer_via_tts(context=context, chat_id=chat_id, text=response)
 
             except Exception as e:
@@ -749,7 +749,7 @@ class ChatGPTTelegramBot:
                     if tokens != 'not_finished':
                         total_tokens = int(tokens)
 
-                        if self.config['use_tts']:
+                        if self.config['use_tts'] == 'true':
                             await self.answer_via_tts(context=context, chat_id=chat_id, text=content)
 
             else:
