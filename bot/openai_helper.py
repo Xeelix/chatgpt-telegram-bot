@@ -179,7 +179,8 @@ class OpenAIHelper:
             )
 
         except openai.error.RateLimitError as e:
-            raise Exception(f"⚠️ _{localized_text('openai_rate_limit', bot_language)}._ ⚠️\n{str(e)}") from e
+            # raise Exception(f"⚠️ _{localized_text('openai_rate_limit', bot_language)}._ ⚠️\n{str(e)}") from e
+            raise Exception(f"⚠️ _{localized_text('openai_rate_limit', bot_language)}._ ⚠️\nОграничение: 3 / мин. Пожалуйста, повторите попытку через 20 секунд.") from e
 
         except openai.error.InvalidRequestError as e:
             raise Exception(f"⚠️ _{localized_text('openai_invalid', bot_language)}._ ⚠️\n{str(e)}") from e
