@@ -4,6 +4,10 @@ __pycache__
 .DS_Store
 /usage_logs
 venv
+
 bot/usage_logs/*
 bot/message_data.json
 bot/*.jpg
+
+*.ogg
+*.pt
