@@ -3,6 +3,7 @@ import logging
 import os
 import itertools
 import asyncio
+import random
 
 import telegram
 from uuid import uuid4
@@ -381,7 +382,7 @@ class ChatGPTTelegramBot:
 
         await self.wrap_with_indicator(update, context, _execute, constants.ChatAction.TYPING)
 
-    async def prompt(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def prompt(self, update: Update, context: ContextTypes.DEFAULT_TYPE, photo_desc=None):
         """
         React to incoming messages and respond accordingly.
         """
@@ -402,18 +403,49 @@ class ChatGPTTelegramBot:
         if chat_id not in self.global_history:
             self.global_history[int(chat_id)] = ""
 
+        logging.debug(f'global history: {self.global_history[int(chat_id)]}')
+        logging.debug(f'prompt: {prompt}')
+
         if self.is_group_chat(update):
             trigger_keyword = self.config['group_trigger_keyword']
 
             if prompt.lower().startswith(trigger_keyword.lower()):
                 prompt = prompt[len(trigger_keyword):].strip()
+                prompt = f"Сообщение от {update.message.from_user.name}: {prompt}"
+
             else:
                 if update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id:
                     logging.info('Message is a reply to the bot, allowing...')
                 else:
-                    logging.warning('Message does not start with trigger keyword, ignoring...')
+                    prompt = f"Сообщение от {update.message.from_user.name}: {prompt}"
 
-                    return
+                    rand = random.randint(0, 2)
+                    rand_to_answer = 0
+                    logging.debug(f'{rand} in range {rand_to_answer}')
+
+                    # if random to answer
+                    if rand == rand_to_answer:
+                        if photo_desc:
+                            prompt = f"{update.message.from_user.name} прислал фото, на котором: {photo_desc}"
+                    else:
+                        logging.debug(f'{rand} is not {rand_to_answer}: Message does not random range, ignoring...')
+
+                        if photo_desc:
+                            self.global_history[
+                                int(chat_id)] += f"\n{update.message.from_user.name} прислал фото, на котором: {photo_desc}"
+                        else:
+                            self.global_history[int(chat_id)] += prompt + "\n"
+                        return
+
+        else:
+            # If it locally messages in bot messages
+            if photo_desc:
+                prompt = f"{update.message.from_user.name} прислал фото, на котором: {photo_desc}"
+            else:
+                prompt = f"\nСообщение от {update.message.from_user.name}: {prompt}"
+
+        final_prompt = self.global_history[int(chat_id)] + prompt
+        final_prompt = final_prompt.strip()
 
         try:
             total_tokens = 0
@@ -424,7 +456,8 @@ class ChatGPTTelegramBot:
                     message_thread_id=self.get_thread_id(update)
                 )
 
-                stream_response = self.openai.get_chat_response_stream(chat_id=chat_id, query=prompt)
+                logging.debug(f"final prompt: {final_prompt}")
+                stream_response = self.openai.get_chat_response_stream(chat_id=chat_id, query=final_prompt)
                 i = 0
                 prev = ''
                 sent_message = None
@@ -501,7 +534,7 @@ class ChatGPTTelegramBot:
             else:
                 async def _reply():
                     nonlocal total_tokens
-                    response, total_tokens = await self.openai.get_chat_response(chat_id=chat_id, query=prompt)
+                    response, total_tokens = await self.openai.get_chat_response(chat_id=chat_id, query=final_prompt)
 
                     # Split into chunks of 4096 characters (Telegram's message limit)
                     chunks = self.split_into_chunks(response)
@@ -1037,6 +1070,7 @@ class ChatGPTTelegramBot:
 
         application.add_error_handler(self.error_handler)
 
+        logging.getLogger('openai').setLevel(logging.INFO)
         logging.getLogger('telegram').setLevel(logging.INFO)
         logging.getLogger('httpx').setLevel(logging.INFO)
         logging.getLogger('asyncio').setLevel(logging.INFO)
