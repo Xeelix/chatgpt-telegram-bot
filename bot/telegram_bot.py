@@ -846,6 +846,8 @@ class ChatGPTTelegramBot:
         answer_tr = localized_text("answer", bot_language)
         loading_tr = localized_text("loading", bot_language)
 
+        await query.answer()
+
         try:
             if callback_data.startswith(callback_data_suffix):
                 unique_id = callback_data.split(':')[1]
