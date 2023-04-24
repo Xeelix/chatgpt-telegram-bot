@@ -282,7 +282,7 @@ class OpenAIHelper:
         :return: The summary
         """
         messages = [
-            {"role": "assistant", "content": "Summarize this conversation in 700 characters or less"},
+            {"role": "assistant", "content": "Резюмируй этот диалов в 1000 символов или менее"},
             {"role": "user", "content": str(conversation)}
         ]
         response = await openai.ChatCompletion.acreate(
