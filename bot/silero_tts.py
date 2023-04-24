@@ -33,10 +33,6 @@ def init():
     model = torch.package.PackageImporter(local_file).load_pickle("tts_models", "model")
     model.to(device)
 
-
-init()
-
-
 def split_text(text):
     limit = 500
 

@@ -22,11 +22,7 @@ from bot import ai_meme
 from openai_helper import OpenAIHelper, localized_text
 from usage_tracker import UsageTracker
 
-from dotenv import load_dotenv
-
-load_dotenv()
-if os.environ.get('USE_TTS', 'false') == 'true':
-    from bot import silero_tts
+from bot import silero_tts
 
 
 def message_text(message: Message) -> str:
@@ -64,6 +60,9 @@ class ChatGPTTelegramBot:
         self.config = config
         self.openai = openai
         bot_language = self.config['bot_language']
+
+        if config['use_tts'] == 'true':
+            silero_tts.init()
 
         self.commands = [
             BotCommand(command='help', description=localized_text('help_description', bot_language)),
