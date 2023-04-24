@@ -69,6 +69,7 @@ class ChatGPTTelegramBot:
         self.usage = {}
         self.last_message = {}
         self.inline_queries_cache = {}
+        self.global_history = {}
 
     async def help(self, update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         """
@@ -202,8 +203,8 @@ class ChatGPTTelegramBot:
         reset_content = message_text(update.message)
         self.openai.reset_chat_history(chat_id=chat_id, content=reset_content)
         await update.effective_message.reply_text(
-           message_thread_id=self.get_thread_id(update),
-           text=localized_text('reset_done', self.config['bot_language'])
+            message_thread_id=self.get_thread_id(update),
+            text=localized_text('reset_done', self.config['bot_language'])
         )
 
     async def image(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -218,8 +219,8 @@ class ChatGPTTelegramBot:
         image_query = message_text(update.message)
         if image_query == '':
             await update.effective_message.reply_text(
-               message_thread_id=self.get_thread_id(update),
-               text=localized_text('image_no_prompt', self.config['bot_language'])
+                message_thread_id=self.get_thread_id(update),
+                text=localized_text('image_no_prompt', self.config['bot_language'])
             )
             return
 
@@ -397,8 +398,13 @@ class ChatGPTTelegramBot:
         prompt = message_text(update.message)
         self.last_message[chat_id] = prompt
 
+        # Initialize the global history for the chat if it doesn't exist
+        if chat_id not in self.global_history:
+            self.global_history[int(chat_id)] = ""
+
         if self.is_group_chat(update):
             trigger_keyword = self.config['group_trigger_keyword']
+
             if prompt.lower().startswith(trigger_keyword.lower()):
                 prompt = prompt[len(trigger_keyword):].strip()
             else:
@@ -406,6 +412,7 @@ class ChatGPTTelegramBot:
                     logging.info('Message is a reply to the bot, allowing...')
                 else:
                     logging.warning('Message does not start with trigger keyword, ignoring...')
+
                     return
 
         try:
@@ -1029,5 +1036,9 @@ class ChatGPTTelegramBot:
         application.add_handler(CallbackQueryHandler(self.handle_callback_inline_query))
 
         application.add_error_handler(self.error_handler)
+
+        logging.getLogger('telegram').setLevel(logging.INFO)
+        logging.getLogger('httpx').setLevel(logging.INFO)
+        logging.getLogger('asyncio').setLevel(logging.INFO)
 
         application.run_polling()
