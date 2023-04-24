@@ -9,6 +9,8 @@ bot/usage_logs/*
 bot/message_data.json
 bot/*.jpg
 
+message_data.json
+
 *.ogg
 *.pt
 
