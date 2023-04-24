@@ -7,6 +7,7 @@ import os
 
 from dotenv import load_dotenv
 
+from bot.background import keep_alive
 from openai_helper import OpenAIHelper, default_max_tokens
 from telegram_bot import ChatGPTTelegramBot
 
@@ -92,4 +93,5 @@ def main():
 
 
 if __name__ == '__main__':
+    keep_alive()
     main()
