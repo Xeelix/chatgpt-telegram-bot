@@ -846,7 +846,7 @@ class ChatGPTTelegramBot:
         answer_tr = localized_text("answer", bot_language)
         loading_tr = localized_text("loading", bot_language)
 
-        await query.answer()
+        await _query.answer()
 
         try:
             if callback_data.startswith(callback_data_suffix):
