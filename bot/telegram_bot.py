@@ -22,6 +22,12 @@ from bot import ai_meme
 from openai_helper import OpenAIHelper, localized_text
 from usage_tracker import UsageTracker
 
+from dotenv import load_dotenv
+
+load_dotenv()
+if os.environ.get('USE_TTS', 'false') == 'true':
+    from bot import silero_tts
+
 
 def message_text(message: Message) -> str:
     """
@@ -58,6 +64,7 @@ class ChatGPTTelegramBot:
         self.config = config
         self.openai = openai
         bot_language = self.config['bot_language']
+
         self.commands = [
             BotCommand(command='help', description=localized_text('help_description', bot_language)),
             BotCommand(command='reset', description=localized_text('reset_description', bot_language)),
@@ -260,6 +267,21 @@ class ChatGPTTelegramBot:
 
         await self.wrap_with_indicator(update, context, _generate, constants.ChatAction.UPLOAD_PHOTO)
 
+    async def answer_via_tts(self, context, chat_id, text):
+        logging.info(f"total content len: {len(text)}")
+
+        splitted_content = silero_tts.split_text(text)
+
+        logging.info(f"total splitted messages: {len(splitted_content)}")
+        for i, msg in enumerate(splitted_content):
+            logging.info(f"{i} - {len(msg)} bytes")
+
+        for message in splitted_content:
+            await context.bot.send_chat_action(chat_id=chat_id,
+                                               action=constants.ChatAction.RECORD_VOICE)
+            ogg_file = silero_tts.text_to_ogg(message)
+            await context.bot.send_voice(chat_id=chat_id, voice=f"./{ogg_file}")
+
     async def transcribe(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
         Transcribe audio messages.
@@ -372,6 +394,9 @@ class ChatGPTTelegramBot:
                             parse_mode=constants.ParseMode.MARKDOWN
                         )
 
+                        if self.config['use_tts']:
+                            await self.answer_via_tts(context=context, chat_id=chat_id, text=response)
+
             except Exception as e:
                 logging.exception(e)
                 await update.effective_message.reply_text(
@@ -445,7 +470,8 @@ class ChatGPTTelegramBot:
                 generated_filename = f"ai_meme_{message_id}.jpg"
 
                 # Meme generation and sending
-                await self.generate_and_send_meme(chat_id, message_id, file_id, downloaded_filename, generated_filename, update,
+                await self.generate_and_send_meme(chat_id, message_id, file_id, downloaded_filename, generated_filename,
+                                                  update,
                                                   context)
             else:
                 # The file_id wasn't found, send an error message
@@ -702,6 +728,9 @@ class ChatGPTTelegramBot:
                     i += 1
                     if tokens != 'not_finished':
                         total_tokens = int(tokens)
+
+                        if self.config['use_tts']:
+                            await self.answer_via_tts(context=context, chat_id=chat_id, text=content)
 
             else:
                 async def _reply():

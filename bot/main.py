@@ -1,6 +1,10 @@
 import logging
 import os
 
+# Install for replit
+# import pip
+# pip.main(['install', 'fake-useragent'])
+
 from dotenv import load_dotenv
 
 from openai_helper import OpenAIHelper, default_max_tokens
@@ -78,6 +82,7 @@ def main():
         'image_prices': [float(i) for i in os.environ.get('IMAGE_PRICES', "0.016,0.018,0.02").split(",")],
         'transcription_price': float(os.environ.get('TOKEN_PRICE', 0.006)),
         'bot_language': os.environ.get('BOT_LANGUAGE', 'en'),
+        'use_tts': os.environ.get('USE_TTS', 'false'),
     }
 
     # Setup and run ChatGPT and Telegram bot
