@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import json
 import logging
 import os
 import itertools
@@ -15,6 +17,8 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Messa
     filters, InlineQueryHandler, CallbackQueryHandler, Application, CallbackContext
 
 from pydub import AudioSegment
+
+from bot import ai_meme
 from openai_helper import OpenAIHelper, localized_text
 from usage_tracker import UsageTracker
 
@@ -71,6 +75,9 @@ class ChatGPTTelegramBot:
         self.last_message = {}
         self.inline_queries_cache = {}
         self.global_history = {}
+
+        self.generating_memes_count = 0
+        self.now_generating_memes = False
 
     async def help(self, update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         """
@@ -382,6 +389,171 @@ class ChatGPTTelegramBot:
 
         await self.wrap_with_indicator(update, context, _execute, constants.ChatAction.TYPING)
 
+    def delete_file_if_exists(self, file_path: str):
+        """
+        Checks if a file exists, and if it does, deletes the file.
+        :param file_path: str, The path to the file to be checked and deleted.
+        """
+        if os.path.isfile(file_path):
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                pass
+        else:
+            pass
+
+    def save_message_data(self, chat_id, message_id, file_id):
+        data_file = 'message_data.json'
+        if os.path.exists(data_file):
+            with open(data_file, 'r') as f:
+                data = json.load(f)
+        else:
+            data = {}
+
+        data[f'{chat_id}_{message_id}'] = {
+            'chat_id': chat_id,
+            'message_id': message_id,
+            'file_id': file_id.file_id
+        }
+
+        with open(data_file, 'w') as f:
+            json.dump(data, f)
+
+    async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        await query.answer()
+        query_data = query.data
+
+        callback_data = query.data.split(":")
+        action = callback_data[0]
+
+        if action == "regenerate_meme":
+            chat_id = query.message.chat_id
+            # message_id = query.message.message_id
+            message_id = int(callback_data[1])
+
+            # Load message data from the JSON file
+            with open('message_data.json', 'r') as f:
+                data = json.load(f)
+
+            # Get the saved file_id using chat_id and message_id
+            saved_data_key = f'{chat_id}_{message_id}'
+            if saved_data_key in data:
+                file_id = data[saved_data_key]['file_id']
+
+                downloaded_filename = f"ai_original_{message_id}.jpg"
+                generated_filename = f"ai_meme_{message_id}.jpg"
+
+                # Meme generation and sending
+                await self.generate_and_send_meme(chat_id, message_id, file_id, downloaded_filename, generated_filename, update,
+                                                  context)
+            else:
+                # The file_id wasn't found, send an error message
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text='Не удалось сгенерировать новый мем. Попробуйте отправить изображение еще раз.',
+                    parse_mode=constants.ParseMode.MARKDOWN
+                )
+
+    async def generate_and_send_meme(self, chat_id, message_id, file_id, downloaded_filename, generated_filename,
+                                     update, context):
+        try:
+            if self.now_generating_memes:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f'Я уже генерирую мем, тихо, тихо',
+                    parse_mode=constants.ParseMode.MARKDOWN
+                )
+                return
+
+            self.now_generating_memes = True
+
+            file_info = await context.bot.get_file(file_id)
+            await file_info.download_to_drive(downloaded_filename)
+
+            ai_meme_obj = ai_meme.AiMeme()
+
+            await context.bot.send_chat_action(chat_id=chat_id, action=constants.ChatAction.UPLOAD_PHOTO)
+            result, description = await ai_meme_obj.generate_meme(downloaded_filename, generated_filename)
+
+            logging.info("generating caption by gpt")
+            description = description.split(':')[1].strip()
+            caption = await self.openai.get_meme_answer(description)
+
+            # print(result)
+            generated_text = caption
+
+            ai_meme.embed_text_on_image(downloaded_filename, generated_text, generated_filename)
+
+            # Send photo
+            keyboard = [
+                [InlineKeyboardButton("Создать еще", callback_data=f"regenerate_meme:{message_id}")],
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await context.bot.send_photo(chat_id=chat_id, photo=generated_filename, reply_markup=reply_markup)
+
+            if update.message:
+                self.save_message_data(chat_id, update.message.message_id, file_id)
+
+            self.delete_file_if_exists(downloaded_filename)
+            self.delete_file_if_exists(generated_filename)
+
+            if update.message:
+                logging.info(f'Meme generated for user {update.message.from_user.name}')
+
+            self.generating_memes_count = 0
+            self.now_generating_memes = False
+
+            # Generating message answer
+            if update.message:
+                await self.prompt(update, context, photo_desc=description)
+
+        except Exception as e:
+            logging.exception(e)
+            self.now_generating_memes = True
+            await context.bot.send_message(
+                chat_id=chat_id,
+                reply_to_message_id=update.message.message_id,
+                text=f'Не удалось получить ответ: {str(e)}',
+                parse_mode=constants.ParseMode.MARKDOWN
+            )
+
+    async def ai_image(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        React to incoming photo and answer generated meme.
+        """
+
+        if not await self.check_allowed_and_within_budget(update, context):
+            return
+
+        chat_id = update.effective_chat.id
+
+        if self.generating_memes_count > 1:
+            return
+
+        if self.now_generating_memes:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                reply_to_message_id=update.message.message_id,
+                text=f'Подожди пока я сгенерирую мем для предыдущего фото и отправь заново...',
+                parse_mode=constants.ParseMode.MARKDOWN
+            )
+            return
+
+        message_id = update.message.message_id
+        photo_obj = update.message.photo[-1]
+
+        downloaded_filename = f"ai_original_{message_id}.jpg"
+        generated_filename = f"ai_meme_{message_id}.jpg"
+
+        logging.info(f'New photo received from user {update.message.from_user.name}')
+        self.generating_memes_count += 1
+
+        # Meme generation and sending
+        await self.generate_and_send_meme(chat_id, message_id, photo_obj, downloaded_filename, generated_filename,
+                                          update, context)
+
     async def prompt(self, update: Update, context: ContextTypes.DEFAULT_TYPE, photo_desc=None):
         """
         React to incoming messages and respond accordingly.
@@ -404,7 +576,7 @@ class ChatGPTTelegramBot:
             self.global_history[int(chat_id)] = ""
 
         logging.debug(f'global history: {self.global_history[int(chat_id)]}')
-        logging.debug(f'prompt: {prompt}')
+        logging.debug(f'prompt: {prompt}\nphoto_desc: {photo_desc}')
 
         if self.is_group_chat(update):
             trigger_keyword = self.config['group_trigger_keyword']
@@ -1066,6 +1238,8 @@ class ChatGPTTelegramBot:
         application.add_handler(InlineQueryHandler(self.inline_query, chat_types=[
             constants.ChatType.GROUP, constants.ChatType.SUPERGROUP, constants.ChatType.PRIVATE
         ]))
+        application.add_handler(MessageHandler(filters.PHOTO & (~filters.COMMAND), self.ai_image))  # ai mme
+        application.add_handler(CallbackQueryHandler(self.button_callback))  # button ai meme
         application.add_handler(CallbackQueryHandler(self.handle_callback_inline_query))
 
         application.add_error_handler(self.error_handler)
