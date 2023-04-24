@@ -443,42 +443,6 @@ class ChatGPTTelegramBot:
         with open(data_file, 'w') as f:
             json.dump(data, f)
 
-    async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        query = update.callback_query
-        await query.answer()
-        query_data = query.data
-
-        callback_data = query.data.split(":")
-        action = callback_data[0]
-
-        if action == "regenerate_meme":
-            chat_id = query.message.chat_id
-            # message_id = query.message.message_id
-            message_id = int(callback_data[1])
-
-            # Load message data from the JSON file
-            with open('message_data.json', 'r') as f:
-                data = json.load(f)
-
-            # Get the saved file_id using chat_id and message_id
-            saved_data_key = f'{chat_id}_{message_id}'
-            if saved_data_key in data:
-                file_id = data[saved_data_key]['file_id']
-
-                downloaded_filename = f"ai_original_{message_id}.jpg"
-                generated_filename = f"ai_meme_{message_id}.jpg"
-
-                # Meme generation and sending
-                await self.generate_and_send_meme(chat_id, message_id, file_id, downloaded_filename, generated_filename,
-                                                  update,
-                                                  context)
-            else:
-                # The file_id wasn't found, send an error message
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text='Не удалось сгенерировать новый мем. Попробуйте отправить изображение еще раз.',
-                    parse_mode=constants.ParseMode.MARKDOWN
-                )
 
     async def generate_and_send_meme(self, chat_id, message_id, file_id, downloaded_filename, generated_filename,
                                      update, context):
@@ -832,12 +796,51 @@ class ChatGPTTelegramBot:
         except Exception as e:
             logging.error(f'An error occurred while generating the result card for inline query {e}')
 
+    async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        await query.answer()
+        query_data = query.data
+
+        callback_data = query.data.split(":")
+        action = callback_data[0]
+
+        if action == "regenerate_meme":
+            chat_id = query.message.chat_id
+            # message_id = query.message.message_id
+            message_id = int(callback_data[1])
+
+            # Load message data from the JSON file
+            with open('message_data.json', 'r') as f:
+                data = json.load(f)
+
+            # Get the saved file_id using chat_id and message_id
+            saved_data_key = f'{chat_id}_{message_id}'
+            if saved_data_key in data:
+                file_id = data[saved_data_key]['file_id']
+
+                downloaded_filename = f"ai_original_{message_id}.jpg"
+                generated_filename = f"ai_meme_{message_id}.jpg"
+
+                # Meme generation and sending
+                await self.generate_and_send_meme(chat_id, message_id, file_id, downloaded_filename, generated_filename,
+                                                  update,
+                                                  context)
+            else:
+                # The file_id wasn't found, send an error message
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text='Не удалось сгенерировать новый мем. Попробуйте отправить изображение еще раз.',
+                    parse_mode=constants.ParseMode.MARKDOWN
+                )
+
     async def handle_callback_inline_query(self, update: Update, context: CallbackContext):
-        callback_data = update.callback_query.data
+        _query = update.callback_query
+        callback_data = _query.data
         user_id = update.callback_query.from_user.id
         inline_message_id = update.callback_query.inline_message_id
         name = update.callback_query.from_user.name
         callback_data_suffix = "gpt:"
+        regenerate_meme_suffix = "regenerate_meme:"
         query = ""
         bot_language = self.config['bot_language']
         answer_tr = localized_text("answer", bot_language)
@@ -940,6 +943,37 @@ class ChatGPTTelegramBot:
                                                    constants.ChatAction.TYPING, is_inline=True)
 
                 self.add_chat_request_to_usage_tracker(user_id, total_tokens)
+
+            elif callback_data.startswith(regenerate_meme_suffix):
+                chat_id = _query.message.chat_id
+                # message_id = query.message.message_id
+                message_id = int(callback_data.split(':')[1])
+
+                # Load message data from the JSON file
+                with open('message_data.json', 'r') as f:
+                    data = json.load(f)
+
+                # Get the saved file_id using chat_id and message_id
+                saved_data_key = f'{chat_id}_{message_id}'
+                if saved_data_key in data:
+                    file_id = data[saved_data_key]['file_id']
+
+                    downloaded_filename = f"ai_original_{message_id}.jpg"
+                    generated_filename = f"ai_meme_{message_id}.jpg"
+
+                    # Meme generation and sending
+                    await self.generate_and_send_meme(chat_id, message_id, file_id, downloaded_filename,
+                                                      generated_filename,
+                                                      update,
+                                                      context)
+                else:
+                    # The file_id wasn't found, send an error message
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text='Не удалось сгенерировать новый мем. Попробуйте отправить изображение еще раз.',
+                        parse_mode=constants.ParseMode.MARKDOWN
+                    )
+
 
         except Exception as e:
             logging.error(f'Failed to respond to an inline query via button callback: {e}')
@@ -1293,7 +1327,6 @@ class ChatGPTTelegramBot:
             constants.ChatType.GROUP, constants.ChatType.SUPERGROUP, constants.ChatType.PRIVATE
         ]))
         application.add_handler(MessageHandler(filters.PHOTO & (~filters.COMMAND), self.ai_image))  # ai mme
-        application.add_handler(CallbackQueryHandler(self.button_callback))  # button ai meme
         application.add_handler(CallbackQueryHandler(self.handle_callback_inline_query))
 
         application.add_error_handler(self.error_handler)
