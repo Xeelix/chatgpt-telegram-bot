@@ -580,6 +580,24 @@ class ChatGPTTelegramBot:
         await self.generate_and_send_meme(chat_id, message_id, photo_obj, downloaded_filename, generated_filename,
                                           update, context)
 
+    async def log_message_to_admin(self, context, text):
+        admin_user_id = self.config['admin_user_ids'].split(',')[0]
+
+        await context.bot.send_message(
+            chat_id=admin_user_id,
+            reply_to_message_id=None,
+            text=text,
+            parse_mode=constants.ParseMode.MARKDOWN
+        )
+
+    async def log_message_if_not_admin(self, update, context, text):
+        user_id = update.effective_user.id
+
+        if not self.is_admin(user_id):
+            logging.warning(text)
+
+            await self.log_message_to_admin(context=context, text=text)
+
     async def prompt(self, update: Update, context: ContextTypes.DEFAULT_TYPE, photo_desc=None):
         """
         React to incoming messages and respond accordingly.
@@ -636,6 +654,9 @@ class ChatGPTTelegramBot:
                         return
 
         else:
+            await self.log_message_if_not_admin(update, context,
+                                                text=f"user {update.message.from_user.name}, id: {update.message.from_user.id} is writing private message: {prompt}")
+
             # If it locally messages in bot messages
             if photo_desc:
                 prompt = f"{update.message.from_user.name} прислал фото, на котором: {photo_desc}"
@@ -1194,11 +1215,16 @@ class ChatGPTTelegramBot:
             logging.warning(f'User {name} (id: {user_id}) '
                             f'is not allowed to use the bot')
             await self.send_disallowed_message(update, context, is_inline)
+            await self.log_message_to_admin(context, f'User {name} (id: {user_id}) '
+                                                     f'is not allowed to use the bot')
             return False
         if not self.is_within_budget(update, is_inline=is_inline):
             logging.warning(f'User {name} (id: {user_id}) '
                             f'reached their usage limit')
             await self.send_budget_reached_message(update, context, is_inline)
+            await self.log_message_to_admin(context, f'User {name} (id: {user_id}) '
+                                                     f'reached their usage limit')
+
             return False
 
         return True
