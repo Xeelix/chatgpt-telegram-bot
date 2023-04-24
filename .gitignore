@@ -11,3 +11,10 @@ bot/*.jpg
 
 *.ogg
 *.pt
+
+.replit
+replit.nix
+
+/ffmpeg
+
+pyproject.toml
