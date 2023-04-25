@@ -463,7 +463,7 @@ class ChatGPTTelegramBot:
             ai_meme_obj = ai_meme.AiMeme()
 
             await context.bot.send_chat_action(chat_id=chat_id, action=constants.ChatAction.UPLOAD_PHOTO)
-            result, description = await ai_meme_obj.generate_meme(downloaded_filename, generated_filename)
+            description = await ai_meme_obj.generate_meme(downloaded_filename)
 
             logging.info("generating caption by gpt")
             description = description.split(':')[1].strip()
@@ -500,7 +500,8 @@ class ChatGPTTelegramBot:
 
         except Exception as e:
             logging.exception(e)
-            self.now_generating_memes = True
+            self.now_generating_memes = False
+            self.generating_memes_count = 0
             await context.bot.send_message(
                 chat_id=chat_id,
                 reply_to_message_id=update.message.message_id,
