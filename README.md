@@ -8,6 +8,7 @@ A [Telegram bot](https://core.telegram.org/bots/api) that integrates with OpenAI
 
 ## Screenshots
 ![demo](https://user-images.githubusercontent.com/11541888/225114786-0d639854-b3e1-4214-b49a-e51ce8c40387.png)
+<img width="540" src="https://user-images.githubusercontent.com/32061277/235380845-f1158267-fb4a-4871-ba09-c4330e144bf3.png">
 
 ## Features
 - [x] Support markdown in answers
