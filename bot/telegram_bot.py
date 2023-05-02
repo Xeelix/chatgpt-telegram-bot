@@ -18,6 +18,7 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Messa
 
 from pydub import AudioSegment
 
+import find_similar
 from bot import ai_meme
 from openai_helper import OpenAIHelper, localized_text
 from usage_tracker import UsageTracker
@@ -443,7 +444,6 @@ class ChatGPTTelegramBot:
         with open(data_file, 'w') as f:
             json.dump(data, f)
 
-
     async def generate_and_send_meme(self, chat_id, message_id, file_id, downloaded_filename, generated_filename,
                                      update, context):
         try:
@@ -467,6 +467,8 @@ class ChatGPTTelegramBot:
 
             logging.info("generating caption by gpt")
             description = description.split(':')[1].strip()
+
+            await context.bot.send_chat_action(chat_id=chat_id, action=constants.ChatAction.UPLOAD_PHOTO)
             caption = await self.openai.get_meme_answer(description)
 
             # print(result)
@@ -576,6 +578,7 @@ class ChatGPTTelegramBot:
             f'New message received from user {update.message.from_user.name} (id: {update.message.from_user.id})')
         chat_id = update.effective_chat.id
         user_id = update.message.from_user.id
+        prompt_original = message_text(update.message)
         prompt = message_text(update.message)
         self.last_message[chat_id] = prompt
 
@@ -625,11 +628,18 @@ class ChatGPTTelegramBot:
             if photo_desc:
                 prompt = f"{update.message.from_user.name} прислал фото, на котором: {photo_desc}"
             else:
-                prompt = f"\nСообщение от {update.message.from_user.name}: {prompt}"
+                # logging.info(f"Similar messages: {similar_messages}")
 
-        final_prompt = self.global_history[int(chat_id)] + prompt
-        final_prompt = final_prompt.strip()
+                prompt = f"Сообщение от {update.message.from_user.name}: {prompt}"
 
+        if self.config["use_qdrant"] == 'true':
+            logging.info("Finding similar messages")
+            similar_messages = find_similar.find_similar_messages(prompt_original)
+            final_prompt = f"История: ({similar_messages})\n(Текущее сообщение){self.global_history[int(chat_id)] + prompt}"
+        else:
+            final_prompt = self.global_history[int(chat_id)] + prompt
+            final_prompt = final_prompt.strip()
+        print(self.openai.config["api_key"])
         try:
             total_tokens = 0
 
@@ -713,7 +723,7 @@ class ChatGPTTelegramBot:
                     i += 1
                     if tokens != 'not_finished':
                         total_tokens = int(tokens)
-
+                        logging.info(f'Total tokens: {total_tokens}')
                         if self.config['use_tts'] == 'true':
                             await self.answer_via_tts(context=context, chat_id=chat_id, text=content)
 
@@ -1338,5 +1348,6 @@ class ChatGPTTelegramBot:
         logging.getLogger('telegram').setLevel(logging.INFO)
         logging.getLogger('httpx').setLevel(logging.INFO)
         logging.getLogger('asyncio').setLevel(logging.INFO)
+        logging.getLogger('hpack.hpack').setLevel(logging.INFO)
 
         application.run_polling()

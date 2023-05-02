@@ -250,6 +250,7 @@ class OpenAIHelper:
             messages=messages,
             temperature=1
         )
+
         return response.choices[0]['message']['content']
 
 

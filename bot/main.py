@@ -84,6 +84,7 @@ def main():
         'transcription_price': float(os.environ.get('TOKEN_PRICE', 0.006)),
         'bot_language': os.environ.get('BOT_LANGUAGE', 'en'),
         'use_tts': os.environ.get('USE_TTS', 'false'),
+        'use_qdrant': os.environ.get('USE_QDRANT', 'false'),
     }
 
     # Setup and run ChatGPT and Telegram bot
