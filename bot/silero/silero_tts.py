@@ -11,7 +11,7 @@ from num2words import num2words
 
 device = torch.device('cpu')
 torch.set_num_threads(4)
-local_file = 'model.pt'
+local_file = '../model.pt'
 
 sample_rate = 48000
 # aidar, baya, kseniya, xenia, eugene, random
@@ -142,7 +142,7 @@ def wav_to_ogg(in_filename: str, out_filename: str = None):
         raise Exception("Укажите путь и имя файла in_filename")
 
     if out_filename is None:
-        out_filename = "test_1.ogg"
+        out_filename = "../test_1.ogg"
 
     if os.path.exists(out_filename):
         os.remove(out_filename)

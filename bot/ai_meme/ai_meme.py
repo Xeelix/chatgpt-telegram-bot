@@ -9,22 +9,6 @@ import aiohttp
 from fake_useragent import UserAgent
 from PIL import Image, ImageDraw, ImageFont
 
-headers = {
-    'authority': 'salesforce-blip.hf.space',
-    'accept': '*/*',
-    'accept-language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-    'content-type': 'application/json',
-    # 'cookie': 'session-space-cookie=d683057bbcc71600bb873a10cbf771aa',
-    'origin': 'https://salesforce-blip.hf.space',
-    'referer': 'https://salesforce-blip.hf.space/',
-    'sec-ch-ua': '"Chromium";v="112", "Google Chrome";v="112", "Not:A-Brand";v="99"',
-    'sec-ch-ua-mobile': '?0',
-    'sec-ch-ua-platform': '"Windows"',
-    'sec-fetch-dest': 'empty',
-    'sec-fetch-mode': 'cors',
-    'sec-fetch-site': 'same-origin',
-    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36',
-}
 
 class AiMeme:
     def __init__(self):
@@ -62,6 +46,7 @@ class AiMeme:
         characters = string.ascii_letters + string.digits
         random_hash = ''.join(random.choice(characters) for _ in range(length))
         return random_hash
+
     async def send_image_request(self, image_data):
         url = "https://salesforce-blip.hf.space/api/queue/push/"
         payload = {
@@ -76,14 +61,14 @@ class AiMeme:
             "session_hash": self.generate_random_hash(10),
         }
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, headers=headers) as response:
+            async with session.post(url, json=payload, headers=self.headers) as response:
                 return await response.json()
 
     async def check_status(self, hash):
         url = f"https://salesforce-blip.hf.space/api/queue/status/"
         payload = {"hash": hash}
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, headers=headers) as response:
+            async with session.post(url, json=payload, headers=self.headers) as response:
                 return await response.json()
 
     # Paste text on image
@@ -124,6 +109,7 @@ def wrap_text(text, font, max_width):
 
     return lines
 
+
 def embed_text_on_image(image_path, text, output_image_path, font_path="impact.ttf"):
     # Load image
     image = Image.open(image_path)
@@ -163,6 +149,7 @@ def embed_text_on_image(image_path, text, output_image_path, font_path="impact.t
     # Save output image
     image.save(output_image_path)
 
+
 def extract_russian_text(text):
     russian_string = re.sub(r'[^а-яА-ЯёЁ0-9\s\.,!?:;—\-«»]+', '', text)
     russian_string = russian_string.strip()
@@ -170,6 +157,7 @@ def extract_russian_text(text):
         text = russian_string
 
     return text
+
 
 async def main():
     ai_meme = AiMeme()
@@ -183,6 +171,7 @@ async def main():
     #
     # embed_text_on_image("ai_original.jpg", generated_text, "ai_meme.jpg")
     # print(f"Prepared result: {generated_text}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

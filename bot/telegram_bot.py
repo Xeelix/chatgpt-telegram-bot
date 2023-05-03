@@ -18,12 +18,12 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Messa
 
 from pydub import AudioSegment
 
-import find_similar
-from bot import ai_meme
+from bot.qdrant import find_similar
+from bot.ai_meme import ai_meme
 from openai_helper import OpenAIHelper, localized_text
 from usage_tracker import UsageTracker
 
-from bot import silero_tts
+from bot.silero import silero_tts
 
 
 def message_text(message: Message) -> str:
@@ -639,7 +639,7 @@ class ChatGPTTelegramBot:
         else:
             final_prompt = self.global_history[int(chat_id)] + prompt
             final_prompt = final_prompt.strip()
-        print(self.openai.config["api_key"])
+
         try:
             total_tokens = 0
 

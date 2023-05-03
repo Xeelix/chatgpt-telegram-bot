@@ -1,11 +1,11 @@
 import datetime
 
-import openai
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 
-import sessionized
-from config import (
+from . import sessionized
+
+from .config import (
     COLLECTION_NAME,
     QDRANT_API_KEY,
     QDRANT_HOST,
