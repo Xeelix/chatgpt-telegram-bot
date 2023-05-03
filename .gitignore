@@ -9,7 +9,7 @@ venv
 /bot/usage_logs/*
 /bot/utils_files/message_data.json
 /bot/utils_files/result.json
-/bot/send_messages.py
+/bot/utils_files/send_messages.py
 /bot/*.jpg
 
 *.ogg
