@@ -110,7 +110,7 @@ def wrap_text(text, font, max_width):
     return lines
 
 
-def embed_text_on_image(image_path, text, output_image_path, font_path="impact.ttf"):
+def embed_text_on_image(image_path, text, output_image_path, font_path="./bot/utils_files/impact.ttf"):
     # Load image
     image = Image.open(image_path)
     width, height = image.size

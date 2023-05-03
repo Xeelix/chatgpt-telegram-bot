@@ -428,7 +428,7 @@ class ChatGPTTelegramBot:
             pass
 
     def save_message_data(self, chat_id, message_id, file_id):
-        data_file = 'message_data.json'
+        data_file = 'utils_files/message_data.json'
         if os.path.exists(data_file):
             with open(data_file, 'r') as f:
                 data = json.load(f)
@@ -821,7 +821,7 @@ class ChatGPTTelegramBot:
             message_id = int(callback_data[1])
 
             # Load message data from the JSON file
-            with open('message_data.json', 'r') as f:
+            with open('utils_files/message_data.json', 'r') as f:
                 data = json.load(f)
 
             # Get the saved file_id using chat_id and message_id
@@ -963,7 +963,7 @@ class ChatGPTTelegramBot:
                 message_id = int(callback_data.split(':')[1])
 
                 # Load message data from the JSON file
-                with open('message_data.json', 'r') as f:
+                with open('utils_files/message_data.json', 'r') as f:
                     data = json.load(f)
 
                 # Get the saved file_id using chat_id and message_id
