@@ -4,6 +4,7 @@ __pycache__
 .DS_Store
 /usage_logs
 venv
+/.cache
 
 
 /bot/usage_logs/*
