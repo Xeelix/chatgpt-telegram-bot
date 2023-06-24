@@ -18,7 +18,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, \
 
 from pydub import AudioSegment
 
-from bot.qdrant import find_similar
+# from bot.qdrant import find_similar
 from bot.ai_meme import ai_meme
 
 from utils import is_group_chat, get_thread_id, message_text, wrap_with_indicator, split_into_chunks, \
@@ -27,7 +27,7 @@ from utils import is_group_chat, get_thread_id, message_text, wrap_with_indicato
 from openai_helper import OpenAIHelper, localized_text
 from usage_tracker import UsageTracker
 
-from bot.silero import silero_tts
+# from bot.silero import silero_tts
 
 
 class ChatGPTTelegramBot:
@@ -45,8 +45,8 @@ class ChatGPTTelegramBot:
         self.openai = openai
         bot_language = self.config['bot_language']
 
-        if config['use_tts'] == 'true':
-            silero_tts.init()
+        # if config['use_tts'] == 'true':
+        #     silero_tts.init()
 
         self.commands = [
             BotCommand(command='help', description=localized_text('help_description', bot_language)),
@@ -249,20 +249,20 @@ class ChatGPTTelegramBot:
 
         await wrap_with_indicator(update, context, _generate, constants.ChatAction.UPLOAD_PHOTO)
 
-    async def answer_via_tts(self, context, chat_id, text):
-        logging.info(f"total content len: {len(text)}")
-
-        splitted_content = silero_tts.split_text(text)
-
-        logging.info(f"total splitted messages: {len(splitted_content)}")
-        for i, msg in enumerate(splitted_content):
-            logging.info(f"{i} - {len(msg)} bytes")
-
-        for message in splitted_content:
-            await context.bot.send_chat_action(chat_id=chat_id,
-                                               action=constants.ChatAction.RECORD_VOICE)
-            ogg_file = silero_tts.text_to_ogg(message)
-            await context.bot.send_voice(chat_id=chat_id, voice=f"./{ogg_file}")
+    # async def answer_via_tts(self, context, chat_id, text):
+    #     logging.info(f"total content len: {len(text)}")
+    #
+    #     splitted_content = silero_tts.split_text(text)
+    #
+    #     logging.info(f"total splitted messages: {len(splitted_content)}")
+    #     for i, msg in enumerate(splitted_content):
+    #         logging.info(f"{i} - {len(msg)} bytes")
+    #
+    #     for message in splitted_content:
+    #         await context.bot.send_chat_action(chat_id=chat_id,
+    #                                            action=constants.ChatAction.RECORD_VOICE)
+    #         ogg_file = silero_tts.text_to_ogg(message)
+    #         await context.bot.send_voice(chat_id=chat_id, voice=f"./{ogg_file}")
 
     async def transcribe(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
@@ -618,13 +618,13 @@ class ChatGPTTelegramBot:
 
                 prompt = f"Сообщение от {update.message.from_user.name}: {prompt}"
 
-        if self.config["use_qdrant"] == 'true':
-            logging.info("Finding similar messages")
-            similar_messages = find_similar.find_similar_messages(prompt_original)
-            final_prompt = f"История: ({similar_messages})\n(Текущее сообщение){self.global_history[int(chat_id)] + prompt}"
-        else:
-            final_prompt = self.global_history[int(chat_id)] + prompt
-            final_prompt = final_prompt.strip()
+        # if self.config["use_qdrant"] == 'true':
+        #     logging.info("Finding similar messages")
+        #     similar_messages = find_similar.find_similar_messages(prompt_original)
+        #     final_prompt = f"История: ({similar_messages})\n(Текущее сообщение){self.global_history[int(chat_id)] + prompt}"
+        # else:
+        final_prompt = self.global_history[int(chat_id)] + prompt
+        final_prompt = final_prompt.strip()
 
         try:
             total_tokens = 0
