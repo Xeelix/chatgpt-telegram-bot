@@ -18,12 +18,12 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Messa
 
 from pydub import AudioSegment
 
-from bot.qdrant import find_similar
+# from bot.qdrant import find_similar
 from bot.ai_meme import ai_meme
 from openai_helper import OpenAIHelper, localized_text
 from usage_tracker import UsageTracker
 
-from bot.silero import silero_tts
+# from bot.silero import silero_tts
 
 
 def message_text(message: Message) -> str:
@@ -62,8 +62,8 @@ class ChatGPTTelegramBot:
         self.openai = openai
         bot_language = self.config['bot_language']
 
-        if config['use_tts'] == 'true':
-            silero_tts.init()
+        # if config['use_tts'] == 'true':
+        #     silero_tts.init()
 
         self.commands = [
             BotCommand(command='help', description=localized_text('help_description', bot_language)),
@@ -632,13 +632,13 @@ class ChatGPTTelegramBot:
 
                 prompt = f"Сообщение от {update.message.from_user.name}: {prompt}"
 
-        if self.config["use_qdrant"] == 'true':
-            logging.info("Finding similar messages")
-            similar_messages = find_similar.find_similar_messages(prompt_original)
-            final_prompt = f"История: ({similar_messages})\n(Текущее сообщение){self.global_history[int(chat_id)] + prompt}"
-        else:
-            final_prompt = self.global_history[int(chat_id)] + prompt
-            final_prompt = final_prompt.strip()
+        # if self.config["use_qdrant"] == 'true':
+        #     logging.info("Finding similar messages")
+        #     similar_messages = find_similar.find_similar_messages(prompt_original)
+        #     final_prompt = f"История: ({similar_messages})\n(Текущее сообщение){self.global_history[int(chat_id)] + prompt}"
+        # else:
+        final_prompt = self.global_history[int(chat_id)] + prompt
+        final_prompt = final_prompt.strip()
 
         try:
             total_tokens = 0
