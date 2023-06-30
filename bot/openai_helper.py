@@ -62,7 +62,9 @@ class OpenAIHelper:
         :param config: A dictionary containing the GPT configuration
         """
         openai.api_key = config['api_key']
-        openai.proxy = config['proxy']
+        # openai.proxy = config['proxy']
+        openai.api_base = "http://localhost:4891/v1"
+
         self.config = config
         self.conversations: dict[int: list] = {}  # {chat_id: history}
         self.last_updated: dict[int: datetime] = {}  # {chat_id: last_update_timestamp}
@@ -242,7 +244,7 @@ class OpenAIHelper:
         messages = [
             {"role": "assistant",
              "content": self.config['ai_meme_prompt']},
-            {"role": "user", "content": str(prompt)}
+            {"role": "user", "content": "my photo description: " + str(prompt)}
         ]
 
         response = await openai.ChatCompletion.acreate(

@@ -602,7 +602,7 @@ class ChatGPTTelegramBot:
                 else:
                     prompt = f"Сообщение от {update.message.from_user.name}: {prompt}"
 
-                    rand = random.randint(0, 2)
+                    rand = random.randint(0, 200)
                     rand_to_answer = 0
                     logging.debug(f'{rand} in range {rand_to_answer}')
 
@@ -1345,8 +1345,9 @@ class ChatGPTTelegramBot:
 
         logging.getLogger('openai').setLevel(logging.INFO)
         logging.getLogger('telegram').setLevel(logging.INFO)
-        logging.getLogger('httpx').setLevel(logging.INFO)
+        logging.getLogger('httpx').setLevel(logging.WARNING)
         logging.getLogger('asyncio').setLevel(logging.INFO)
         logging.getLogger('hpack.hpack').setLevel(logging.INFO)
+        logging.getLogger('httpcore').setLevel(logging.WARNING)
 
         application.run_polling()
