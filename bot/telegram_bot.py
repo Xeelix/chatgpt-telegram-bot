@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-import json
+import asyncio
 import logging
 import os
-import itertools
-import asyncio
-import random
 
-import telegram
 from uuid import uuid4
 from telegram import BotCommandScopeAllGroupChats, Update, constants
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, InlineQueryResultArticle
@@ -18,16 +14,12 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, \
 
 from pydub import AudioSegment
 
-# from bot.qdrant import find_similar
-from bot.ai_meme import ai_meme
-
 from utils import is_group_chat, get_thread_id, message_text, wrap_with_indicator, split_into_chunks, \
     edit_message_with_retry, get_stream_cutoff_values, is_allowed, get_remaining_budget, is_admin, is_within_budget, \
-    get_reply_to_message_id, add_chat_request_to_usage_tracker, error_handler
+    get_reply_to_message_id, add_chat_request_to_usage_tracker, error_handler, is_direct_result, handle_direct_result, \
+    cleanup_intermediate_files
 from openai_helper import OpenAIHelper, localized_text
 from usage_tracker import UsageTracker
-
-# from bot.silero import silero_tts
 
 
 class ChatGPTTelegramBot:
@@ -44,10 +36,6 @@ class ChatGPTTelegramBot:
         self.config = config
         self.openai = openai
         bot_language = self.config['bot_language']
-
-        # if config['use_tts'] == 'true':
-        #     silero_tts.init()
-
         self.commands = [
             BotCommand(command='help', description=localized_text('help_description', bot_language)),
             BotCommand(command='reset', description=localized_text('reset_description', bot_language)),
@@ -63,10 +51,6 @@ class ChatGPTTelegramBot:
         self.usage = {}
         self.last_message = {}
         self.inline_queries_cache = {}
-        self.global_history = {}
-
-        self.generating_memes_count = 0
-        self.now_generating_memes = False
 
     async def help(self, update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         """
@@ -212,7 +196,6 @@ class ChatGPTTelegramBot:
                 or not await self.check_allowed_and_within_budget(update, context):
             return
 
-        chat_id = update.effective_chat.id
         image_query = message_text(update.message)
         if image_query == '':
             await update.effective_message.reply_text(
@@ -248,21 +231,6 @@ class ChatGPTTelegramBot:
                 )
 
         await wrap_with_indicator(update, context, _generate, constants.ChatAction.UPLOAD_PHOTO)
-
-    # async def answer_via_tts(self, context, chat_id, text):
-    #     logging.info(f"total content len: {len(text)}")
-    #
-    #     splitted_content = silero_tts.split_text(text)
-    #
-    #     logging.info(f"total splitted messages: {len(splitted_content)}")
-    #     for i, msg in enumerate(splitted_content):
-    #         logging.info(f"{i} - {len(msg)} bytes")
-    #
-    #     for message in splitted_content:
-    #         await context.bot.send_chat_action(chat_id=chat_id,
-    #                                            action=constants.ChatAction.RECORD_VOICE)
-    #         ogg_file = silero_tts.text_to_ogg(message)
-    #         await context.bot.send_voice(chat_id=chat_id, voice=f"./{ogg_file}")
 
     async def transcribe(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
@@ -318,17 +286,12 @@ class ChatGPTTelegramBot:
             if user_id not in self.usage:
                 self.usage[user_id] = UsageTracker(user_id, update.message.from_user.name)
 
-            # send decoded audio to openai
             try:
-
-                # Transcribe the audio file
                 transcript = await self.openai.transcribe(filename_mp3)
 
-                # add transcription seconds to usage tracker
                 transcription_price = self.config['transcription_price']
                 self.usage[user_id].add_transcription_seconds(audio_track.duration_seconds, transcription_price)
 
-                # add guest chat request to guest usage tracker
                 allowed_user_ids = self.config['allowed_user_ids'].split(',')
                 if str(user_id) not in allowed_user_ids and 'guests' in self.usage:
                     self.usage["guests"].add_transcription_seconds(audio_track.duration_seconds, transcription_price)
@@ -354,9 +317,7 @@ class ChatGPTTelegramBot:
                     # Get the response of the transcript
                     response, total_tokens = await self.openai.get_chat_response(chat_id=chat_id, query=transcript)
 
-                    # add chat request to users usage tracker
                     self.usage[user_id].add_chat_tokens(total_tokens, self.config['token_price'])
-                    # add guest chat request to guest usage tracker
                     if str(user_id) not in allowed_user_ids and 'guests' in self.usage:
                         self.usage["guests"].add_chat_tokens(total_tokens, self.config['token_price'])
 
@@ -375,9 +336,6 @@ class ChatGPTTelegramBot:
                             parse_mode=constants.ParseMode.MARKDOWN
                         )
 
-                        if self.config['use_tts'] == 'true':
-                            await self.answer_via_tts(context=context, chat_id=chat_id, text=response)
-
             except Exception as e:
                 logging.exception(e)
                 await update.effective_message.reply_text(
@@ -387,7 +345,6 @@ class ChatGPTTelegramBot:
                     parse_mode=constants.ParseMode.MARKDOWN
                 )
             finally:
-                # Cleanup files
                 if os.path.exists(filename_mp3):
                     os.remove(filename_mp3)
                 if os.path.exists(filename):
@@ -395,157 +352,7 @@ class ChatGPTTelegramBot:
 
         await wrap_with_indicator(update, context, _execute, constants.ChatAction.TYPING)
 
-    def delete_file_if_exists(self, file_path: str):
-        """
-        Checks if a file exists, and if it does, deletes the file.
-        :param file_path: str, The path to the file to be checked and deleted.
-        """
-        if os.path.isfile(file_path):
-            try:
-                os.remove(file_path)
-            except Exception as e:
-                pass
-        else:
-            pass
-
-    def save_message_data(self, chat_id, message_id, file_id):
-        data_file = 'utils_files/message_data.json'
-        if os.path.exists(data_file):
-            with open(data_file, 'r') as f:
-                data = json.load(f)
-        else:
-            data = {}
-
-        data[f'{chat_id}_{message_id}'] = {
-            'chat_id': chat_id,
-            'message_id': message_id,
-            'file_id': file_id.file_id
-        }
-
-        with open(data_file, 'w') as f:
-            json.dump(data, f)
-
-    async def generate_and_send_meme(self, chat_id, message_id, file_id, downloaded_filename, generated_filename,
-                                     update, context):
-        try:
-            if self.now_generating_memes:
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=f'Я уже генерирую мем, тихо, тихо',
-                    parse_mode=constants.ParseMode.MARKDOWN
-                )
-                return
-
-            self.now_generating_memes = True
-
-            file_info = await context.bot.get_file(file_id)
-            await file_info.download_to_drive(downloaded_filename)
-
-            ai_meme_obj = ai_meme.AiMeme()
-
-            await context.bot.send_chat_action(chat_id=chat_id, action=constants.ChatAction.UPLOAD_PHOTO)
-            description = await ai_meme_obj.generate_meme(downloaded_filename)
-
-            logging.info("generating caption by gpt")
-            description = description.split(':')[1].strip()
-
-            await context.bot.send_chat_action(chat_id=chat_id, action=constants.ChatAction.UPLOAD_PHOTO)
-            caption = await self.openai.get_meme_answer(description)
-
-            # print(result)
-            generated_text = caption
-
-            ai_meme.embed_text_on_image(downloaded_filename, generated_text, generated_filename)
-
-            # Send photo
-            keyboard = [
-                [InlineKeyboardButton("Создать еще", callback_data=f"regenerate_meme:{message_id}")],
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-
-            await context.bot.send_photo(chat_id=chat_id, photo=generated_filename, reply_markup=reply_markup)
-
-            if update.message:
-                self.save_message_data(chat_id, update.message.message_id, file_id)
-
-            self.delete_file_if_exists(downloaded_filename)
-            self.delete_file_if_exists(generated_filename)
-
-            if update.message:
-                logging.info(f'Meme generated for user {update.message.from_user.name}')
-
-            self.generating_memes_count = 0
-            self.now_generating_memes = False
-
-            # Generating message answer
-            if update.message:
-                await self.prompt(update, context, photo_desc=description)
-
-        except Exception as e:
-            logging.exception(e)
-            self.now_generating_memes = False
-            self.generating_memes_count = 0
-            await context.bot.send_message(
-                chat_id=chat_id,
-                reply_to_message_id=update.message.message_id,
-                text=f'Не удалось получить ответ: {str(e)}',
-                parse_mode=constants.ParseMode.MARKDOWN
-            )
-
-    async def ai_image(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """
-        React to incoming photo and answer generated meme.
-        """
-
-        if not await self.check_allowed_and_within_budget(update, context):
-            return
-
-        chat_id = update.effective_chat.id
-
-        if self.generating_memes_count > 1:
-            return
-
-        if self.now_generating_memes:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                reply_to_message_id=update.message.message_id,
-                text=f'Подожди пока я сгенерирую мем для предыдущего фото и отправь заново...',
-                parse_mode=constants.ParseMode.MARKDOWN
-            )
-            return
-
-        message_id = update.message.message_id
-        photo_obj = update.message.photo[-1]
-
-        downloaded_filename = f"ai_original_{message_id}.jpg"
-        generated_filename = f"ai_meme_{message_id}.jpg"
-
-        logging.info(f'New photo received from user {update.message.from_user.name}')
-        self.generating_memes_count += 1
-
-        # Meme generation and sending
-        await self.generate_and_send_meme(chat_id, message_id, photo_obj, downloaded_filename, generated_filename,
-                                          update, context)
-
-    async def log_message_to_admin(self, context, text):
-        admin_user_id = self.config['admin_user_ids'].split(',')[0]
-
-        await context.bot.send_message(
-            chat_id=admin_user_id,
-            reply_to_message_id=None,
-            text=text,
-            parse_mode=constants.ParseMode.MARKDOWN
-        )
-
-    async def log_message_if_not_admin(self, update, context, text):
-        user_id = update.effective_user.id
-
-        if not is_admin(self.config, user_id):
-            logging.warning(text)
-
-            await self.log_message_to_admin(context=context, text=text)
-
-    async def prompt(self, update: Update, context: ContextTypes.DEFAULT_TYPE, photo_desc=None):
+    async def prompt(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
         React to incoming messages and respond accordingly.
         """
@@ -559,24 +366,13 @@ class ChatGPTTelegramBot:
             f'New message received from user {update.message.from_user.name} (id: {update.message.from_user.id})')
         chat_id = update.effective_chat.id
         user_id = update.message.from_user.id
-        prompt_original = message_text(update.message)
         prompt = message_text(update.message)
         self.last_message[chat_id] = prompt
 
-        # Initialize the global history for the chat if it doesn't exist
-        if chat_id not in self.global_history:
-            self.global_history[int(chat_id)] = ""
-
-        logging.debug(f'global history: {self.global_history[int(chat_id)]}')
-        logging.debug(f'prompt: {prompt}\nphoto_desc: {photo_desc}')
-
         if is_group_chat(update):
             trigger_keyword = self.config['group_trigger_keyword']
-
             if prompt.lower().startswith(trigger_keyword.lower()):
                 prompt = prompt[len(trigger_keyword):].strip()
-                prompt = f"Сообщение от {update.message.from_user.name}: {prompt}"
-
 
                 if update.message.reply_to_message and \
                         update.message.reply_to_message.text and \
@@ -586,45 +382,8 @@ class ChatGPTTelegramBot:
                 if update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id:
                     logging.info('Message is a reply to the bot, allowing...')
                 else:
-                    prompt = f"Сообщение от {update.message.from_user.name}: {prompt}"
-
-                    rand = random.randint(0, 2)
-                    rand_to_answer = 0
-                    logging.debug(f'{rand} in range {rand_to_answer}')
-
-                    # if random to answer
-                    if rand == rand_to_answer:
-                        if photo_desc:
-                            prompt = f"{update.message.from_user.name} прислал фото, на котором: {photo_desc}"
-                    else:
-                        logging.debug(f'{rand} is not {rand_to_answer}: Message does not random range, ignoring...')
-
-                        if photo_desc:
-                            self.global_history[
-                                int(chat_id)] += f"\n{update.message.from_user.name} прислал фото, на котором: {photo_desc}"
-                        else:
-                            self.global_history[int(chat_id)] += prompt + "\n"
-                        return
-
-        else:
-            await self.log_message_if_not_admin(update, context,
-                                                text=f"user {update.message.from_user.name}, id: {update.message.from_user.id} is writing private message: {prompt}")
-
-            # If it locally messages in bot messages
-            if photo_desc:
-                prompt = f"{update.message.from_user.name} прислал фото, на котором: {photo_desc}"
-            else:
-                # logging.info(f"Similar messages: {similar_messages}")
-
-                prompt = f"Сообщение от {update.message.from_user.name}: {prompt}"
-
-        # if self.config["use_qdrant"] == 'true':
-        #     logging.info("Finding similar messages")
-        #     similar_messages = find_similar.find_similar_messages(prompt_original)
-        #     final_prompt = f"История: ({similar_messages})\n(Текущее сообщение){self.global_history[int(chat_id)] + prompt}"
-        # else:
-        final_prompt = self.global_history[int(chat_id)] + prompt
-        final_prompt = final_prompt.strip()
+                    logging.warning('Message does not start with trigger keyword, ignoring...')
+                    return
 
         try:
             total_tokens = 0
@@ -635,8 +394,7 @@ class ChatGPTTelegramBot:
                     message_thread_id=get_thread_id(update)
                 )
 
-                logging.debug(f"final prompt: {final_prompt}")
-                stream_response = self.openai.get_chat_response_stream(chat_id=chat_id, query=final_prompt)
+                stream_response = self.openai.get_chat_response_stream(chat_id=chat_id, query=prompt)
                 i = 0
                 prev = ''
                 sent_message = None
@@ -644,6 +402,9 @@ class ChatGPTTelegramBot:
                 stream_chunk = 0
 
                 async for content, tokens in stream_response:
+                    if is_direct_result(content):
+                        return await handle_direct_result(self.config, update, content)
+
                     if len(content.strip()) == 0:
                         continue
 
@@ -709,14 +470,14 @@ class ChatGPTTelegramBot:
                     i += 1
                     if tokens != 'not_finished':
                         total_tokens = int(tokens)
-                        logging.info(f'Total tokens: {total_tokens}')
-                        if self.config['use_tts'] == 'true':
-                            await self.answer_via_tts(context=context, chat_id=chat_id, text=content)
 
             else:
                 async def _reply():
                     nonlocal total_tokens
-                    response, total_tokens = await self.openai.get_chat_response(chat_id=chat_id, query=final_prompt)
+                    response, total_tokens = await self.openai.get_chat_response(chat_id=chat_id, query=prompt)
+
+                    if is_direct_result(response):
+                        return await handle_direct_result(self.config, update, response)
 
                     # Split into chunks of 4096 characters (Telegram's message limit)
                     chunks = split_into_chunks(response)
@@ -798,61 +559,19 @@ class ChatGPTTelegramBot:
         except Exception as e:
             logging.error(f'An error occurred while generating the result card for inline query {e}')
 
-    async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        query = update.callback_query
-        await query.answer()
-        query_data = query.data
-
-        callback_data = query.data.split(":")
-        action = callback_data[0]
-
-        if action == "regenerate_meme":
-            chat_id = query.message.chat_id
-            # message_id = query.message.message_id
-            message_id = int(callback_data[1])
-
-            # Load message data from the JSON file
-            with open('utils_files/message_data.json', 'r') as f:
-                data = json.load(f)
-
-            # Get the saved file_id using chat_id and message_id
-            saved_data_key = f'{chat_id}_{message_id}'
-            if saved_data_key in data:
-                file_id = data[saved_data_key]['file_id']
-
-                downloaded_filename = f"ai_original_{message_id}.jpg"
-                generated_filename = f"ai_meme_{message_id}.jpg"
-
-                # Meme generation and sending
-                await self.generate_and_send_meme(chat_id, message_id, file_id, downloaded_filename, generated_filename,
-                                                  update,
-                                                  context)
-            else:
-                # The file_id wasn't found, send an error message
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text='Не удалось сгенерировать новый мем. Попробуйте отправить изображение еще раз.',
-                    parse_mode=constants.ParseMode.MARKDOWN
-                )
-
     async def handle_callback_inline_query(self, update: Update, context: CallbackContext):
         """
         Handle the callback query from the inline query result
         """
         callback_data = update.callback_query.data
-        _query = update.callback_query
-        callback_data = _query.data
         user_id = update.callback_query.from_user.id
         inline_message_id = update.callback_query.inline_message_id
         name = update.callback_query.from_user.name
         callback_data_suffix = "gpt:"
-        regenerate_meme_suffix = "regenerate_meme:"
         query = ""
         bot_language = self.config['bot_language']
         answer_tr = localized_text("answer", bot_language)
         loading_tr = localized_text("loading", bot_language)
-
-        await _query.answer()
 
         try:
             if callback_data.startswith(callback_data_suffix):
@@ -873,13 +592,21 @@ class ChatGPTTelegramBot:
                                                   is_inline=True)
                     return
 
+                unavailable_message = localized_text("function_unavailable_in_inline_mode", bot_language)
                 if self.config['stream']:
                     stream_response = self.openai.get_chat_response_stream(chat_id=user_id, query=query)
                     i = 0
                     prev = ''
-                    sent_message = None
                     backoff = 0
                     async for content, tokens in stream_response:
+                        if is_direct_result(content):
+                            cleanup_intermediate_files(content)
+                            await edit_message_with_retry(context, chat_id=None,
+                                                          message_id=inline_message_id,
+                                                          text=f'{query}\n\n_{answer_tr}:_\n{unavailable_message}',
+                                                          is_inline=True)
+                            return
+
                         if len(content.strip()) == 0:
                             continue
 
@@ -888,11 +615,10 @@ class ChatGPTTelegramBot:
 
                         if i == 0:
                             try:
-                                if sent_message is not None:
-                                    await edit_message_with_retry(context, chat_id=None,
-                                                                       message_id=inline_message_id,
-                                                                       text=f'{query}\n\n{answer_tr}:\n{content}',
-                                                                       is_inline=True)
+                                await edit_message_with_retry(context, chat_id=None,
+                                                              message_id=inline_message_id,
+                                                              text=f'{query}\n\n{answer_tr}:\n{content}',
+                                                              is_inline=True)
                             except:
                                 continue
 
@@ -938,6 +664,14 @@ class ChatGPTTelegramBot:
                         logging.info(f'Generating response for inline query by {name}')
                         response, total_tokens = await self.openai.get_chat_response(chat_id=user_id, query=query)
 
+                        if is_direct_result(response):
+                            cleanup_intermediate_files(response)
+                            await edit_message_with_retry(context, chat_id=None,
+                                                          message_id=inline_message_id,
+                                                          text=f'{query}\n\n_{answer_tr}:_\n{unavailable_message}',
+                                                          is_inline=True)
+                            return
+
                         text_content = f'{query}\n\n_{answer_tr}:_\n{response}'
 
                         # We only want to send the first 4096 characters. No chunking allowed in inline mode.
@@ -951,37 +685,6 @@ class ChatGPTTelegramBot:
                                               constants.ChatAction.TYPING, is_inline=True)
 
                 add_chat_request_to_usage_tracker(self.usage, self.config, user_id, total_tokens)
-
-            elif callback_data.startswith(regenerate_meme_suffix):
-                chat_id = _query.message.chat_id
-                # message_id = query.message.message_id
-                message_id = int(callback_data.split(':')[1])
-
-                # Load message data from the JSON file
-                with open('utils_files/message_data.json', 'r') as f:
-                    data = json.load(f)
-
-                # Get the saved file_id using chat_id and message_id
-                saved_data_key = f'{chat_id}_{message_id}'
-                if saved_data_key in data:
-                    file_id = data[saved_data_key]['file_id']
-
-                    downloaded_filename = f"ai_original_{message_id}.jpg"
-                    generated_filename = f"ai_meme_{message_id}.jpg"
-
-                    # Meme generation and sending
-                    await self.generate_and_send_meme(chat_id, message_id, file_id, downloaded_filename,
-                                                      generated_filename,
-                                                      update,
-                                                      context)
-                else:
-                    # The file_id wasn't found, send an error message
-                    await context.bot.send_message(
-                        chat_id=chat_id,
-                        text='Не удалось сгенерировать новый мем. Попробуйте отправить изображение еще раз.',
-                        parse_mode=constants.ParseMode.MARKDOWN
-                    )
-
 
         except Exception as e:
             logging.error(f'Failed to respond to an inline query via button callback: {e}')
@@ -1070,20 +773,15 @@ class ChatGPTTelegramBot:
             'chat', self.prompt, filters=filters.ChatType.GROUP | filters.ChatType.SUPERGROUP)
         )
         application.add_handler(MessageHandler(
-            filters.AUDIO | filters.VOICE,
+            filters.AUDIO | filters.VOICE | filters.Document.AUDIO |
+            filters.VIDEO | filters.VIDEO_NOTE | filters.Document.VIDEO,
             self.transcribe))
         application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), self.prompt))
         application.add_handler(InlineQueryHandler(self.inline_query, chat_types=[
             constants.ChatType.GROUP, constants.ChatType.SUPERGROUP, constants.ChatType.PRIVATE
         ]))
-        application.add_handler(MessageHandler(filters.PHOTO & (~filters.COMMAND), self.ai_image))  # ai mme
         application.add_handler(CallbackQueryHandler(self.handle_callback_inline_query))
 
         application.add_error_handler(error_handler)
-
-        logging.getLogger('openai').setLevel(logging.INFO)
-        logging.getLogger('telegram').setLevel(logging.INFO)
-        logging.getLogger('asyncio').setLevel(logging.INFO)
-        logging.getLogger('hpack.hpack').setLevel(logging.INFO)
 
         application.run_polling()

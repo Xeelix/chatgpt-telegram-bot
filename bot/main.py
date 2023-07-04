@@ -1,14 +1,8 @@
 import logging
 import os
 
-# Install for replit
-# import pip
-# pip.main(['install', 'fake-useragent'])
-
 from dotenv import load_dotenv
 
-from bot.background import keep_alive
-from openai_helper import OpenAIHelper, default_max_tokens
 from plugin_manager import PluginManager
 from openai_helper import OpenAIHelper, default_max_tokens, are_functions_available
 from telegram_bot import ChatGPTTelegramBot
@@ -44,9 +38,6 @@ def main():
         'max_history_size': int(os.environ.get('MAX_HISTORY_SIZE', 15)),
         'max_conversation_age_minutes': int(os.environ.get('MAX_CONVERSATION_AGE_MINUTES', 180)),
         'assistant_prompt': os.environ.get('ASSISTANT_PROMPT', 'You are a helpful assistant.'),
-        'ai_meme_prompt': os.environ.get('AI_MEME_PROMPT',
-                                          'You are meme generator. I will send image, you should generate a funny meme.'
-                                          ),
         'max_tokens': int(os.environ.get('MAX_TOKENS', max_tokens_default)),
         'n_choices': int(os.environ.get('N_CHOICES', 1)),
         'temperature': float(os.environ.get('TEMPERATURE', 1.0)),
@@ -91,8 +82,6 @@ def main():
         'image_prices': [float(i) for i in os.environ.get('IMAGE_PRICES', "0.016,0.018,0.02").split(",")],
         'transcription_price': float(os.environ.get('TRANSCRIPTION_PRICE', 0.006)),
         'bot_language': os.environ.get('BOT_LANGUAGE', 'en'),
-        'use_tts': os.environ.get('USE_TTS', 'false'),
-        'use_qdrant': os.environ.get('USE_QDRANT', 'false'),
     }
 
     plugin_config = {
@@ -107,5 +96,4 @@ def main():
 
 
 if __name__ == '__main__':
-    keep_alive()
     main()

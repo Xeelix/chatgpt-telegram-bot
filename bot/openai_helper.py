@@ -14,6 +14,7 @@ from calendar import monthrange
 
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 
+from utils import is_direct_result
 from plugin_manager import PluginManager
 
 # Models can be found here: https://platform.openai.com/docs/models/overview
@@ -118,6 +119,9 @@ class OpenAIHelper:
         response = await self.__common_get_chat_response(chat_id, query)
         if self.config['enable_functions']:
             response, plugins_used = await self.__handle_function_call(chat_id, response)
+            if is_direct_result(response):
+                return response, '0'
+
         answer = ''
 
         if len(response.choices) > 1 and self.config['n_choices'] > 1:
@@ -158,6 +162,9 @@ class OpenAIHelper:
         response = await self.__common_get_chat_response(chat_id, query, stream=True)
         if self.config['enable_functions']:
             response, plugins_used = await self.__handle_function_call(chat_id, response, stream=True)
+            if is_direct_result(response):
+                yield response, '0'
+                return
 
         answer = ''
         async for item in response:
@@ -214,7 +221,7 @@ class OpenAIHelper:
                 try:
                     summary = await self.__summarise(self.conversations[chat_id][:-1])
                     logging.debug(f'Summary: {summary}')
-                    self.reset_chat_history(chat_id)
+                    self.reset_chat_history(chat_id, self.conversations[chat_id][0]['content'])
                     self.__add_to_history(chat_id, role="assistant", content=summary)
                     self.__add_to_history(chat_id, role="user", content=query)
                 except Exception as e:
@@ -241,8 +248,7 @@ class OpenAIHelper:
             return await openai.ChatCompletion.acreate(**common_args)
 
         except openai.error.RateLimitError as e:
-            # raise Exception(f"⚠️ _{localized_text('openai_rate_limit', bot_language)}._ ⚠️\n{str(e)}") from e
-            raise Exception(f"⚠️ _{localized_text('openai_rate_limit', bot_language)}._ ⚠️\nОграничение: 3 / мин. Пожалуйста, повторите попытку через 20 секунд.") from e
+            raise e
 
         except openai.error.InvalidRequestError as e:
             raise Exception(f"⚠️ _{localized_text('openai_invalid', bot_language)}._ ⚠️\n{str(e)}") from e
@@ -284,7 +290,16 @@ class OpenAIHelper:
 
         logging.info(f'Calling function {function_name} with arguments {arguments}')
         function_response = await self.plugin_manager.call_function(function_name, arguments)
-        logging.info(f'Got response {function_response}')
+
+        if function_name not in plugins_used:
+            plugins_used += (function_name,)
+
+        if is_direct_result(function_response):
+            self.__add_function_call_to_history(chat_id=chat_id, function_name=function_name,
+                                                content=json.dumps({'result': 'Done, the content has been sent'
+                                                                              'to the user.'}))
+            return function_response, plugins_used
+
         self.__add_function_call_to_history(chat_id=chat_id, function_name=function_name, content=function_response)
         response = await openai.ChatCompletion.acreate(
             model=self.config['model'],
@@ -293,8 +308,6 @@ class OpenAIHelper:
             function_call='auto' if times < self.config['functions_max_consecutive_calls'] else 'none',
             stream=stream
         )
-        if function_name not in plugins_used:
-            plugins_used += (function_name,)
         return await self.__handle_function_call(chat_id, response, stream, times + 1, plugins_used)
 
     async def generate_image(self, prompt: str) -> tuple[str, str]:
@@ -342,27 +355,6 @@ class OpenAIHelper:
             content = self.config['assistant_prompt']
         self.conversations[chat_id] = [{"role": "system", "content": content}]
 
-    async def get_meme_answer(self, prompt: str) -> str:
-        """
-        Sends a meme caption answer to the user.
-        :param prompt: The prompt to send to the model
-        :return: The simple answer
-        """
-        messages = [
-            {"role": "assistant",
-             "content": self.config['ai_meme_prompt']},
-            {"role": "user", "content": str(prompt)}
-        ]
-
-        response = await openai.ChatCompletion.acreate(
-            model=self.config['model'],
-            messages=messages,
-            temperature=1
-        )
-
-        return response.choices[0]['message']['content']
-
-
     def __max_age_reached(self, chat_id) -> bool:
         """
         Checks if the maximum conversation age has been reached.
@@ -398,7 +390,7 @@ class OpenAIHelper:
         :return: The summary
         """
         messages = [
-            {"role": "assistant", "content": "Резюмируй этот диалог в 1000 символов или менее"},
+            {"role": "assistant", "content": "Summarize this conversation in 700 characters or less"},
             {"role": "user", "content": str(conversation)}
         ]
         response = await openai.ChatCompletion.acreate(
