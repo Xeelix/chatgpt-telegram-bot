@@ -9,6 +9,8 @@ import random
 
 import telegram
 from uuid import uuid4
+
+from deep_translator import YandexTranslator, GoogleTranslator
 from telegram import constants, BotCommandScopeAllGroupChats
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, InlineQueryResultArticle
 from telegram import Message, MessageEntity, Update, InputTextMessageContent, BotCommand, ChatMember
@@ -23,7 +25,7 @@ from bot.ai_meme import ai_meme
 from openai_helper import OpenAIHelper, localized_text
 from usage_tracker import UsageTracker
 
-# from bot.silero import silero_tts
+from bot.silero import silero_tts
 
 
 def message_text(message: Message) -> str:
@@ -62,8 +64,8 @@ class ChatGPTTelegramBot:
         self.openai = openai
         bot_language = self.config['bot_language']
 
-        # if config['use_tts'] == 'true':
-        #     silero_tts.init()
+        if config['use_tts'] == 'true':
+            silero_tts.init()
 
         self.commands = [
             BotCommand(command='help', description=localized_text('help_description', bot_language)),
@@ -482,7 +484,14 @@ class ChatGPTTelegramBot:
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
-            await context.bot.send_photo(chat_id=chat_id, photo=generated_filename, reply_markup=reply_markup)
+            try:
+                translated_description = GoogleTranslator(source="auto", target="ru").translate(description)
+            except:
+                translated_description = ""
+
+            combined_description = f"Ru: {translated_description}\n\nEng: {description}"
+            await context.bot.send_photo(chat_id=chat_id, photo=generated_filename, reply_markup=reply_markup,
+                                         caption=combined_description)
 
             if update.message:
                 self.save_message_data(chat_id, update.message.message_id, file_id)
@@ -524,14 +533,14 @@ class ChatGPTTelegramBot:
         if self.generating_memes_count > 1:
             return
 
-        if self.now_generating_memes:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                reply_to_message_id=update.message.message_id,
-                text=f'Подожди пока я сгенерирую мем для предыдущего фото и отправь заново...',
-                parse_mode=constants.ParseMode.MARKDOWN
-            )
-            return
+        # if self.now_generating_memes:
+        #     await context.bot.send_message(
+        #         chat_id=chat_id,
+        #         reply_to_message_id=update.message.message_id,
+        #         text=f'Подожди пока я сгенерирую мем для предыдущего фото и отправь заново...',
+        #         parse_mode=constants.ParseMode.MARKDOWN
+        #     )
+        #     return
 
         message_id = update.message.message_id
         photo_obj = update.message.photo[-1]
@@ -602,7 +611,7 @@ class ChatGPTTelegramBot:
                 else:
                     prompt = f"Сообщение от {update.message.from_user.name}: {prompt}"
 
-                    rand = random.randint(0, 2)
+                    rand = random.randint(0, 10)
                     rand_to_answer = 0
                     logging.debug(f'{rand} in range {rand_to_answer}')
 
@@ -1345,8 +1354,9 @@ class ChatGPTTelegramBot:
 
         logging.getLogger('openai').setLevel(logging.INFO)
         logging.getLogger('telegram').setLevel(logging.INFO)
-        logging.getLogger('httpx').setLevel(logging.INFO)
+        logging.getLogger('httpx').setLevel(logging.WARNING)
         logging.getLogger('asyncio').setLevel(logging.INFO)
         logging.getLogger('hpack.hpack').setLevel(logging.INFO)
+        logging.getLogger('httpcore').setLevel(logging.WARNING)
 
         application.run_polling()

@@ -13,9 +13,9 @@ device = torch.device('cpu')
 torch.set_num_threads(4)
 local_file = '../model.pt'
 
-sample_rate = 48000
+sample_rate = 24000
 # aidar, baya, kseniya, xenia, eugene, random
-speaker = 'kseniya'
+speaker = 'xenia'
 
 ffmpeg_path = "ffmpeg"
 
@@ -84,59 +84,6 @@ def get_normalized_text(text):
     return text
 
 
-def generate_wav(text, voice_path='old_grandma_1.pt', output_file='test.wav', is_generate_random=False,
-                 is_use_prepared=True):
-    start_time = time.time()
-
-    if text is None:
-        raise Exception("Передайте текст")
-
-        # Удаляем существующий файл чтобы все хорошо работало
-    if os.path.exists("test.wav"):
-        os.remove("test.wav")
-
-    text = _nums_to_text(text)
-    text = get_normalized_text(text)
-
-    print("Generating wav...")
-    # audio_path = model.save_wav(text=text,
-    #                             speaker=speaker,
-    #                             sample_rate=sample_rate,
-    #                             put_accent=True,
-    #                             put_yo=True)
-
-    # if is_generate_random:
-
-    if is_use_prepared:
-        if speaker == "random":
-            audio = model.apply_tts(ssml_text=text,
-                                    speaker=speaker,
-                                    sample_rate=sample_rate,
-                                    voice_path=voice_path,
-                                    put_accent=True,
-                                    put_yo=True)
-        else:
-            audio = model.apply_tts(ssml_text=text,
-                                    speaker=speaker,
-                                    sample_rate=sample_rate,
-                                    put_accent=True,
-                                    put_yo=True)
-
-    else:
-        audio = model.apply_tts(ssml_text=text,
-                                speaker=speaker,
-                                sample_rate=sample_rate,
-                                put_accent=True,
-                                put_yo=True)
-        model.save_random_voice(voice_path)
-
-    wavio.write(output_file, audio, sample_rate, sampwidth=2)
-
-    print(f"wav generation time: {time.time() - start_time}")
-
-    return output_file
-
-
 def wav_to_ogg(in_filename: str, out_filename: str = None):
     if not in_filename:
         raise Exception("Укажите путь и имя файла in_filename")
@@ -194,28 +141,66 @@ def replace_accent_with_plus(text):
     return text.replace('́', '+')
 
 
+def generate_wav(text, voice_path='old_grandma_1.pt', output_file='test.wav', is_generate_random=False,
+                 is_use_prepared=True):
+    start_time = time.time()
+
+    if text is None:
+        raise Exception("Передайте текст")
+
+        # Удаляем существующий файл чтобы все хорошо работало
+    if os.path.exists("test.wav"):
+        os.remove("test.wav")
+
+    text = _nums_to_text(text)
+    text = get_normalized_text(text)
+
+    print("Generating wav...")
+    # audio_path = model.save_wav(text=text,
+    #                             speaker=speaker,
+    #                             sample_rate=sample_rate,
+    #                             put_accent=True,
+    #                             put_yo=True)
+
+    # if is_generate_random:
+
+    if is_use_prepared:
+        if speaker == "random":
+            audio = model.apply_tts(ssml_text=text,
+                                    speaker=speaker,
+                                    sample_rate=sample_rate,
+                                    voice_path=voice_path,
+                                    put_accent=True,
+                                    put_yo=True)
+        else:
+            audio = model.apply_tts(ssml_text=text,
+                                    speaker=speaker,
+                                    sample_rate=sample_rate,
+                                    put_accent=True,
+                                    put_yo=True)
+
+    else:
+        audio = model.apply_tts(ssml_text=text,
+                                speaker=speaker,
+                                sample_rate=sample_rate,
+                                put_accent=True,
+                                put_yo=True)
+        model.save_random_voice(voice_path)
+
+    wavio.write(output_file, audio, sample_rate, sampwidth=2)
+
+    print(f"wav generation time: {time.time() - start_time}")
+
+    return output_file
+
 if __name__ == "__main__":
+    init()
+
     text_input = """
-О, бля, какая подлянка, @Xeelix, ты зачем такое предложил? 
-Но ладно, сейчас я расскажу вам легенду, которую передал мне мой старый пиратский друг.
- 
-Это песня о Роме и Артеме, которая выдумана на коленке, но все равно смешная.
-
-🎵 Рома и Артем друзья были не один день,
-Но Рома был нетрезв от начала до конца.
-
-Он дрочил Артему, игнорируя всех,
-Но тот не заставил себя пинасом быть.
-
-Получил Рома сильный шлепок от своих друзей,
-Но главное, что на дрочку время ушло долгое.
-
-Артем просто стоял, на словечко не реагировал,
-Но, как я думаю, за то не наказали.
+О, бля, какая подлянка, даун сука, ты зачем такое предложил? 
 """
 
-    # for i in range(1, 21):
-    #     generate_wav(text, voice_path=f'{i}_voice.pt', output_file=f'test{i}.wav', is_use_prepared=False)
+    # for i in range(1, 40):
+    #     generate_wav(text_input, voice_path=f'{i}_voice.pt', output_file=f'test{i}.wav', is_use_prepared=False)
 
     generate_wav(text_input, voice_path=f'old_grandma_1.pt', output_file=f'test.wav', is_use_prepared=True)
-
