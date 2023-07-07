@@ -1,3 +1,7 @@
+import sys
+print('Python %s on %s' % (sys.version, sys.platform))
+sys.path.extend(['/home/dima/PycharmProjects/chatgpt-telegram-bot'])
+
 import logging
 import os
 

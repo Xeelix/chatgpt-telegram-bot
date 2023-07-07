@@ -384,7 +384,6 @@ class ChatGPTTelegramBot:
                 else:
                     logging.warning('Message does not start with trigger keyword, ignoring...')
                     return
-
         try:
             total_tokens = 0
 

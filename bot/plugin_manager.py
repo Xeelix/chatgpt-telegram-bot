@@ -2,6 +2,7 @@ import json
 
 from plugins.dice import DicePlugin
 from plugins.youtube_audio_extractor import YouTubeAudioExtractorPlugin
+from plugins.ddg_video_search import DDGVideoSearchPlugin
 from plugins.ddg_image_search import DDGImageSearchPlugin
 from plugins.ddg_translate import DDGTranslatePlugin
 from plugins.spotify import SpotifyPlugin
@@ -27,6 +28,7 @@ class PluginManager:
             'ddg_web_search': DDGWebSearchPlugin,
             'ddg_translate': DDGTranslatePlugin,
             'ddg_image_search': DDGImageSearchPlugin,
+            'ddg_video_search': DDGVideoSearchPlugin,
             'spotify': SpotifyPlugin,
             'worldtimeapi': WorldTimeApiPlugin,
             'youtube_audio_extractor': YouTubeAudioExtractorPlugin,

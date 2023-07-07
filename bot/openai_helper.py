@@ -355,6 +355,27 @@ class OpenAIHelper:
             content = self.config['assistant_prompt']
         self.conversations[chat_id] = [{"role": "system", "content": content}]
 
+    async def get_meme_answer(self, prompt: str) -> str:
+        """
+        Sends a meme caption answer to the user.
+        :param prompt: The prompt to send to the model
+        :return: The simple answer
+        """
+        messages = [
+            {"role": "assistant",
+             "content": self.config['ai_meme_prompt']},
+            {"role": "user", "content": str(prompt)}
+        ]
+
+        response = await openai.ChatCompletion.acreate(
+            model=self.config['model'],
+            messages=messages,
+            temperature=1
+        )
+
+        return response.choices[0]['message']['content']
+
+
     def __max_age_reached(self, chat_id) -> bool:
         """
         Checks if the maximum conversation age has been reached.
